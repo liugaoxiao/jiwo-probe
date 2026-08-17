@@ -6,14 +6,17 @@ import {
   ChevronDown,
   ChevronRight,
   CreditCard,
+  Crown,
   Globe2,
   Gauge,
   Layers,
+  Moon,
   Palette,
   Radio,
   Server,
   ShieldCheck,
   Sparkles,
+  SunMoon,
   Target,
   X,
   XCircle,
@@ -24,6 +27,7 @@ import type {
   ProbePayload,
 } from './types'
 import { Twemoji } from './Twemoji'
+import { parseThemeName } from './use-probe'
 import { EXTRA_LICENSE_BADGES, HEADER_LICENSE_BADGES } from './license-badges'
 import { FLAG_OPTIONS } from './country-flag'
 import { displayServerName } from './server-name'
@@ -36,7 +40,7 @@ function cn(...values: Array<string | false | null | undefined>): string {
   return values.filter(Boolean).join(' ')
 }
 
-const LICENSE_CYCLE_MS = 5500
+const LICENSE_CYCLE_MS = 5596 // 主控 license-nameplate 实测周期(2026-08-17)
 const LICENSE_REVEAL_END = 0.36
 const licenseStarPalette = ['#8c5d17', '#d7a63d', '#f2d78a', '#fff1b9', '#c78e24']
 const licenseClamp = (value: number, min: number, max: number) =>
@@ -177,19 +181,21 @@ type PremiumProbePageProps = {
   isLoading: boolean
   isError: boolean
   // 主题切换回调（经典界面 ThemeSelect 同款语义: name=null 表示跟随主控）
-  onThemeChange?: (name: 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium' | null) => void
+  onThemeChange?: (name: 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium' | 'ran' | 'glassmorphism' | null) => void
 }
 
 type StatusFilter = 'all' | 'online' | 'offline'
 type PremiumProbeView = 'card' | 'network' | 'resource'
 
-const PREMIUM_THEME_OPTIONS: { value: 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium'; label: string }[] = [
+const PREMIUM_THEME_OPTIONS: { value: 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium' | 'ran' | 'glassmorphism'; label: string }[] = [
   { value: 'pixel', label: '像素' },
   { value: 'flat', label: '扁平' },
   { value: 'anime', label: '动漫' },
   { value: 'glass', label: '玻璃' },
   { value: 'lumina', label: 'Lumina' },
   { value: 'premium', label: 'Premium' },
+  { value: 'ran', label: '岚 · Ran' },
+  { value: 'glassmorphism', label: 'Glassmorphism' },
 ]
 
 // 主题切换下拉（黑金风）。当前必然是 premium（本页就是），选择其他主题或"跟随主控"时回调上层切换。
@@ -209,7 +215,7 @@ function PremiumThemeSelect({ onThemeChange }: { onThemeChange?: PremiumProbePag
     return () => document.removeEventListener('mousedown', handle)
   }, [open])
 
-  const pick = (name: 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium' | null) => {
+  const pick = (name: 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium' | 'ran' | 'glassmorphism' | null) => {
     setOpen(false)
     if (name === 'premium') return // 已在 Premium，无需切换
     onThemeChange?.(name)
@@ -789,10 +795,12 @@ function DataInsightPanels({
     Number(showTraffic7D) +
     Number(showResourceHeatmap) +
     Number(showTrafficQuota)
+  const isPlatinum = document.documentElement.classList.contains('platinum')
   const heatColor = (value?: number) => {
-    if (value === undefined) return 'rgba(255,255,255,.035)'
+    if (value === undefined) return isPlatinum ? 'rgba(168,124,34,.08)' : 'rgba(255,255,255,.035)'
     if (value >= 85) return 'rgba(239,91,100,.72)'
     if (value >= 60) return 'rgba(224,156,58,.62)'
+    if (isPlatinum) return `rgba(168,124,34,${0.12 + value / 220})`
     return `rgba(216,180,106,${0.16 + value / 180})`
   }
   const empty = <p className='premium-probe-insights-empty'>暂无可用数据</p>
@@ -1915,8 +1923,8 @@ function PremiumServerCard({
   const mem = resourcePercentage(server.mem_used, server.mem_total)
   const disk = resourcePercentage(server.disk_used, server.disk_total)
   const trafficUsed =
-    server.traffic_used_total ??
     server.traffic_used ??
+    server.traffic_used_total ??
     server.traffic_used_up ??
     0
   const trafficValue = server.traffic_limit
@@ -2055,6 +2063,58 @@ function ServerDetailDrawer({
   const latency = averageLatency(server)
   const traffic = summarizeSevenDayTraffic([server])
   const maxTraffic = Math.max(1, ...traffic.map((item) => item.total))
+  // 流量计费口径(照主控 premium drawer: 本周期计费用量/原始周期/校准调整/对账/周期/开机网卡)
+  const accounting =
+    server.traffic_used === undefined
+      ? null
+      : {
+          used: formatTrafficCompact(server.traffic_used),
+          meter: [
+            server.traffic_source === 'system'
+              ? '系统网卡'
+              : server.traffic_source === 'v2ray'
+                ? 'V2Ray 统计'
+                : server.traffic_source || '',
+            server.traffic_stats_mode === 'both'
+              ? '上行 + 下行'
+              : server.traffic_stats_mode === 'oneway'
+                ? '单向(仅上行)'
+                : server.traffic_stats_mode === 'oneway_down'
+                  ? '单向(仅下行)'
+                  : server.traffic_stats_mode || '',
+          ]
+            .filter(Boolean)
+            .join(' · '),
+          rawUp: formatTrafficCompact(server.traffic_used_up ?? 0),
+          rawDown: formatTrafficCompact(server.traffic_used_down ?? 0),
+          hasRaw:
+            server.traffic_used_up !== undefined ||
+            server.traffic_used_down !== undefined,
+          adj:
+            server.traffic_adjustment === undefined
+              ? null
+              : `${server.traffic_adjustment < 0 ? '−' : '+'}${formatTrafficCompact(Math.abs(server.traffic_adjustment))}`,
+          recon:
+            server.traffic_used_total !== undefined &&
+            server.traffic_adjustment !== undefined
+              ? `${formatTrafficCompact(server.traffic_used_total)} ${
+                  server.traffic_adjustment < 0 ? '−' : '+'
+                } ${formatTrafficCompact(Math.abs(server.traffic_adjustment))} = ${formatTrafficCompact(server.traffic_used)}`
+              : null,
+          period:
+            server.period_start && server.period_end
+              ? `${server.period_start.slice(5)} — ${server.period_end.slice(5)}`
+              : null,
+          boot:
+            (server.boot_traffic_up !== undefined ||
+              server.boot_traffic_down !== undefined) &&
+            server.boot_traffic_scope !== 'all_time'
+              ? {
+                  up: formatTrafficCompact(server.boot_traffic_up ?? 0),
+                  down: formatTrafficCompact(server.boot_traffic_down ?? 0),
+                }
+              : null,
+        }
   useEffect(() => {
     const close = (event: KeyboardEvent) => event.key === 'Escape' && onClose()
     window.addEventListener('keydown', close)
@@ -2105,6 +2165,31 @@ function ServerDetailDrawer({
             <strong>{latency === undefined ? '—' : `${latency} ms`}</strong>
           </div>
         </div>
+        {accounting && (
+          <section className='premium-probe-drawer-section'>
+            <h3>流量计费口径</h3>
+            <div className='premium-probe-drawer-accounting'>
+              <div>
+                <span>本周期计费用量</span>
+                <strong>{accounting.used}</strong>
+              </div>
+              {accounting.meter && <p>计费口径：{accounting.meter}</p>}
+              {accounting.hasRaw && (
+                <p>
+                  原始周期：↑ {accounting.rawUp} · ↓ {accounting.rawDown}
+                </p>
+              )}
+              {accounting.adj && <p>校准/周期边界调整：{accounting.adj}</p>}
+              {accounting.recon && <p>对账：{accounting.recon}</p>}
+              {accounting.period && <p>周期：{accounting.period}</p>}
+              {accounting.boot && (
+                <p>
+                  本次开机网卡：↑ {accounting.boot.up} · ↓ {accounting.boot.down}
+                </p>
+              )}
+            </div>
+          </section>
+        )}
         <section className='premium-probe-drawer-section'>
           <h3>近 7 日流量</h3>
           <div className='premium-probe-drawer-traffic'>
@@ -2230,6 +2315,59 @@ export function PremiumProbePage({
     if (typeof window === 'undefined') return true
     return localStorage.getItem('premium-probe-watermark') !== '0'
   })
+  // 配色模式: auto(北京时间白天白金/晚上黑金) ⇄ 白金 ⇄ 黑金 三态循环
+  // 直接操作 html class(不动全局 DARK_OVERRIDE, 避免污染其他主题), localStorage 记忆
+  const [colorMode, setColorMode] = useState<'auto' | 'platinum' | 'dark'>(() => {
+    if (typeof window === 'undefined') return 'auto'
+    const saved = localStorage.getItem('premium-probe-color-mode')
+    return saved === 'platinum' || saved === 'dark' ? saved : 'auto'
+  })
+  // 用户手动点过按钮后, 主控下发不再驱动配色
+  const manualColorRef = useRef(false)
+  // 主控下发驱动: 纯 premium → auto; premiumplatinum/premiumlight → 白金。
+  // 仅当用户从未在探针上选过配色(localStorage 无 premium-probe-color-mode)时才驱动;
+  // 用户点过(含 auto)即持久记忆, 刷新后主控黑金/白金也不覆盖(2026-08-17 用户规则)
+  useEffect(() => {
+    if (manualColorRef.current) return
+    if (localStorage.getItem('premium-probe-color-mode')) return
+    const themeRaw = data?.appearance?.theme
+    if (!themeRaw) return
+    const parsed = parseThemeName(themeRaw)
+    if (parsed.platinum) {
+      if (colorMode !== 'platinum') setColorMode('platinum')
+    } else if (colorMode !== 'auto') {
+      setColorMode('auto')
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.appearance?.theme])
+  const [autoPlatinum, setAutoPlatinum] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true
+    const now = new Date()
+    const hour = (now.getUTCHours() + 8) % 24 // 北京时间(UTC+8)
+    return hour >= 6 && hour < 18
+  })
+  useEffect(() => {
+    localStorage.setItem('premium-probe-color-mode', colorMode)
+    const apply = () => {
+      if (colorMode === 'auto') {
+        const now = new Date()
+        const hour = (now.getUTCHours() + 8) % 24
+        const isDay = hour >= 6 && hour < 18
+        document.documentElement.classList.toggle('platinum', isDay)
+        setAutoPlatinum(isDay)
+      } else {
+        document.documentElement.classList.toggle('platinum', colorMode === 'platinum')
+      }
+    }
+    apply()
+    if (colorMode !== 'auto') return
+    const timer = window.setInterval(apply, 60_000) // 跨 6/18 点自动切换
+    return () => window.clearInterval(timer)
+  }, [colorMode])
+  const cycleColorMode = () => {
+    manualColorRef.current = true
+    setColorMode((prev) => (prev === 'auto' ? 'platinum' : prev === 'platinum' ? 'dark' : 'auto'))
+  }
   // 底部许可证动画开关（默认开，localStorage 记忆）
   const [licenseAnim, setLicenseAnim] = useState<boolean>(() => {
     if (typeof window === 'undefined') return true
@@ -2410,6 +2548,30 @@ export function PremiumProbePage({
             onClick={toggleWatermark}
           >
             <Layers />
+          </button>
+          <button
+            type='button'
+            className={`premium-probe-login premium-probe-platinum-toggle${colorMode === 'dark' || (colorMode === 'auto' && !autoPlatinum) ? '' : ' is-on'}`}
+            aria-label={
+              colorMode === 'auto'
+                ? autoPlatinum
+                  ? '自动配色·白天白金(点击切到白金)'
+                  : '自动配色·晚上黑金(点击切到白金)'
+                : colorMode === 'platinum'
+                  ? '白金配色(点击切到黑金)'
+                  : '黑金配色(点击切到自动)'
+            }
+            aria-pressed={colorMode !== 'dark' && (colorMode !== 'auto' || autoPlatinum)}
+            title={
+              colorMode === 'auto'
+                ? `自动配色: 白天白金 / 晚上黑金(当前${autoPlatinum ? '白金' : '黑金'})`
+                : colorMode === 'platinum'
+                  ? '白金配色 → 点击切到黑金配色'
+                  : '黑金配色 → 点击切到自动配色(白天白金/晚上黑金)'
+            }
+            onClick={cycleColorMode}
+          >
+            {colorMode === 'auto' ? <SunMoon /> : colorMode === 'platinum' ? <Crown /> : <Moon />}
           </button>
           <PremiumThemeSelect onThemeChange={onThemeChange} />
         </nav>

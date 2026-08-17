@@ -1,11 +1,11 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import Lottie from 'lottie-react'
-import { Activity, ArrowDown, ArrowDownUp, ArrowUp, BadgeDollarSign, Calendar, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clock, Clock3, Cpu, Database, Gauge, Gem, Globe2, HardDrive, LayoutGrid, List, MapPin, MemoryStick, Monitor, Moon, MoveHorizontal, Palette, PieChart, RefreshCw, Rows3, Rows4, Search, Server, Sun, TrendingUp, Trophy, Unplug, Wallet, Wifi, XCircle, ZoomIn, ZoomOut } from 'lucide-react'
+import { Activity, ArrowDown, ArrowDownUp, ArrowUp, BadgeDollarSign, Calendar, CalendarClock, Check, CheckCircle2, ChevronDown, ChevronUp, CircleDollarSign, Clock, Clock3, Cpu, Crown, Database, Gauge, Gem, Globe2, HardDrive, LayoutGrid, List, MapPin, MemoryStick, Monitor, Moon, MoveHorizontal, Palette, PieChart, RefreshCw, Rows3, Rows4, Search, Server, Sun, TrendingUp, Trophy, Unplug, Wallet, Wifi, XCircle, ZoomIn, ZoomOut } from 'lucide-react'
 import { siAlmalinux, siAlpinelinux, siApple, siArchlinux, siCentos, siDebian, siFedora, siFreebsd, siGentoo, siKalilinux, siLinux, siLinuxmint, siNixos, siOpensuse, siProxmox, siRedhat, siRockylinux, siUbuntu } from 'simple-icons'
 import { Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts'
 import type { ProbeBucket, ProbePingSeries, ProbeReturnRoute, ProbeServer, ThemeName } from './types'
-import { getActiveTheme, getDarkOverride, getThemeOverride, setDarkOverride, setTheme, useProbe } from './use-probe'
+import { EnrichedServer, getActiveTheme, getDarkOverride, getThemeOverride, setDarkOverride, setTheme, useProbe } from './use-probe'
 import { Twemoji } from './Twemoji'
 import { ServerDetail } from './ServerDetail'
 import { computeRemainingValue, formatMoney } from './value'
@@ -15,6 +15,7 @@ import premiumRouteAnimation from './assets/return-route/premium.json'
 const colors = ['#8b5cf6', '#0ea5e9', '#22c55e', '#f59e0b', '#ef4444', '#ec4899']
 const RegionGlobe = lazy(() => import('./RegionGlobe').then((module) => ({ default: module.RegionGlobe })))
 const PremiumProbePage = lazy(() => import('./PremiumProbePage').then((module) => ({ default: module.PremiumProbePage })))
+const GmApp = lazy(() => import('./glassmorphism/GmApp').then((module) => ({ default: module.default })))
 const ranges = [
   {
     key: '1h',
@@ -173,7 +174,7 @@ export function regionCountryLabel(server: ProbeServer): string {
 
 function RegionSelect({ regions, value, onChange }: { regions: string[]; value: string; onChange: (value: string) => void }) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const [pos, setPos] = useState({ top: 0, right: 0 })
   const wrapRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -186,7 +187,8 @@ function RegionSelect({ regions, value, onChange }: { regions: string[]; value: 
       if (top + estHeight > window.innerHeight - 8 && rect.top - estHeight - 5 > 0) {
         top = rect.top - estHeight - 5
       }
-      setPos({ top, left: rect.left, width: rect.width })
+      // 右缘与按钮右缘对齐(fixed right 定位), 不再按估算宽度左夹取
+      setPos({ top, right: window.innerWidth - rect.right })
     }
     setOpen((v) => !v)
   }, [open, regions.length])
@@ -221,7 +223,7 @@ function RegionSelect({ regions, value, onChange }: { regions: string[]; value: 
       </button>
       {open &&
         createPortal(
-          <div className="region-menu" ref={menuRef} style={{ top: pos.top, left: pos.left, minWidth: pos.width }} role="listbox">
+          <div className="region-menu" ref={menuRef} style={{ top: pos.top, right: pos.right }} role="listbox">
             <button type="button" role="option" aria-selected={value === 'all'} onClick={() => { onChange('all'); setOpen(false) }}>
               <Twemoji>🌍</Twemoji>
               <span>全部地区</span>
@@ -246,11 +248,13 @@ const THEME_OPTIONS: { value: ThemeName; label: string }[] = [
   { value: 'glass', label: '玻璃' },
   { value: 'lumina', label: 'Lumina' },
   { value: 'premium', label: 'Premium' },
+  { value: 'ran', label: '岚 · Ran' },
+  { value: 'glassmorphism', label: 'Glassmorphism' },
 ]
 
 function ThemeSelect({ value, onChange }: { value: ThemeName | null; onChange: (name: ThemeName | null) => void }) {
   const [open, setOpen] = useState(false)
-  const [pos, setPos] = useState({ top: 0, left: 0, width: 0 })
+  const [pos, setPos] = useState({ top: 0, right: 0 })
   const wrapRef = useRef<HTMLDivElement>(null)
   const menuRef = useRef<HTMLDivElement>(null)
 
@@ -263,7 +267,8 @@ function ThemeSelect({ value, onChange }: { value: ThemeName | null; onChange: (
       if (top + estHeight > window.innerHeight - 8 && rect.top - estHeight - 5 > 0) {
         top = rect.top - estHeight - 5
       }
-      setPos({ top, left: rect.left, width: rect.width })
+      // 右缘与按钮右缘对齐(fixed right 定位), 精确不漂移
+      setPos({ top, right: window.innerWidth - rect.right })
     }
     setOpen((v) => !v)
   }, [open])
@@ -302,7 +307,7 @@ function ThemeSelect({ value, onChange }: { value: ThemeName | null; onChange: (
       </button>
       {open &&
         createPortal(
-          <div className="region-menu theme-menu" ref={menuRef} style={{ top: pos.top, left: pos.left }} role="listbox">
+          <div className="region-menu theme-menu" ref={menuRef} style={{ top: pos.top, right: pos.right }} role="listbox">
             <button type="button" role="option" aria-selected={value === null} onClick={() => { onChange(null); setOpen(false) }}>
               <span>跟随主控</span>
               {value === null && <Check size={14} className="theme-menu-check" />}
@@ -608,11 +613,32 @@ function Leaderboard({ servers }: { servers: ProbeServer[] }) {
               </button>
             ))}
           </div>
-          <ol className="leaderboard-list">
+          <ol
+            className="leaderboard-list"
+            onClick={(event) => {
+              // 事件委托: 轮询刷新等 DOM 时序下子按钮可能被替换, 直接绑定会丢事件(#175)
+              // 在稳定父级 ol 上统一处理, 通过 data-idx 定位
+              const target = event.target as HTMLElement
+              const main = target.closest('.lb-main')
+              if (main) {
+                const idx = main.getAttribute('data-idx')
+                if (idx !== null && idx !== '') location.hash = `#/server/${idx}`
+                return
+              }
+              const expand = target.closest('.lb-expand')
+              if (expand) {
+                const idx = expand.getAttribute('data-idx')
+                if (idx !== null && idx !== '') {
+                  const n = Number(idx)
+                  setExpanded((prev) => (prev === n ? null : n))
+                }
+              }
+            }}
+          >
             {rows.map(({ server, index, value, lines }, rank) => (
               <li key={`${server.name}-${index}`}>
                 <div className="lb-row">
-                  <button type="button" className="lb-main" onClick={() => (location.hash = `#/server/${index}`)}>
+                  <button type="button" className="lb-main" data-idx={index}>
                     <span className="rank">{rank + 1}</span>
                     <span className="lb-name">
                       <Twemoji>
@@ -629,7 +655,7 @@ function Leaderboard({ servers }: { servers: ProbeServer[] }) {
                       type="button"
                       className={`lb-expand${expanded === index ? ' open' : ''}`}
                       aria-label={expanded === index ? '收起线路明细' : '展开线路明细'}
-                      onClick={() => setExpanded((prev) => (prev === index ? null : index))}
+                      data-idx={index}
                     >
                       <ChevronDown size={13} />
                     </button>
@@ -834,7 +860,7 @@ export function TrafficChart({ daily, containerClass = 'detail-chart' }: { daily
   )
 }
 
-function TrafficDialog({ server, close }: { server: ProbeServer; close: () => void }) {
+export function TrafficDialog({ server, close }: { server: ProbeServer; close: () => void }) {
   return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={close}>
       <section className="modal" onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()}>
@@ -895,7 +921,7 @@ export function SystemIcon({ server }: { server: ProbeServer }) {
   )
 }
 
-function TrendDialog({ serverIndex, initial, targetKey, title, mode, close }: { serverIndex: number; initial: ProbePingSeries[]; targetKey: string; title: string; mode: 'latency' | 'loss'; close: () => void }) {
+export function TrendDialog({ serverIndex, initial, targetKey, title, mode, close }: { serverIndex: number; initial: ProbePingSeries[]; targetKey: string; title: string; mode: 'latency' | 'loss'; close: () => void }) {
   const [range, setRange] = useState<RangeKey>('1h')
   const [group, setGroup] = useState<'all' | 'cn' | 'idc'>('all')
   const [hidden, setHidden] = useState<Set<string>>(new Set())
@@ -1125,176 +1151,19 @@ function TrendDialog({ serverIndex, initial, targetKey, title, mode, close }: { 
     document.body,
   )
 }
-
-const LOAD_LINES = [
-  { key: 'l1', label: '1 分钟', color: 'var(--primary, #8b5cf6)' },
-  { key: 'l5', label: '5 分钟', color: '#f59e0b' },
-  { key: 'l15', label: '15 分钟', color: '#22c55e' },
-] as const
-
-// 负载历史曲线（数据来自 /api/load，Worker cron 自建采集）。详情页与 Lumina 弹窗共用，containerClass 控制容器（详情页 detail-chart / 弹窗 chart）
-export function LoadTrendChart({ serverName, containerClass = 'detail-chart' }: { serverName: string; containerClass?: string }) {
-  const [range, setRange] = useState<RangeKey>('1h')
-  const [hidden, setHidden] = useState<Set<string>>(new Set())
-  const [rows, setRows] = useState<{ ts: number; time: string; l1: number | null; l5: number | null; l15: number | null }[]>([])
-  const [loading, setLoading] = useState(true)
-  const [zoom, setZoom] = useState(1)
-  const [isFit, setIsFit] = useState(true)
-  const chartRef = useRef<HTMLDivElement>(null)
-
-  useEffect(() => {
-    const controller = new AbortController()
-    setLoading(true)
-    void fetch(`/api/load?server=${encodeURIComponent(serverName)}&range=${range}`, {
-      cache: 'no-store',
-      signal: controller.signal,
-    })
-      .then((response) => {
-        if (!response.ok) throw new Error(`HTTP ${response.status}`)
-        return response.json() as Promise<{
-          success: boolean
-          points?: { ts: number; l1: number; l5: number; l15: number }[]
-        }>
-      })
-      .then((payload) => {
-        if (payload.success && payload.points) {
-          setRows(
-            payload.points.map((p) => ({
-              ts: p.ts,
-              time: formatAxisDateTime(p.ts, range === '1h'),
-              l1: p.l1 ?? null,
-              l5: p.l5 ?? null,
-              l15: p.l15 ?? null,
-            })),
-          )
-        } else {
-          setRows([])
-        }
-      })
-      .catch(() => setRows([]))
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false)
-      })
-    return () => controller.abort()
-  }, [range, serverName])
-
-  const fitZoom = () => {
-    const el = chartRef.current
-    if (!el || !rows.length) return
-    const target = el.clientWidth / (rows.length * 82)
-    setZoom(Math.max(0.05, Math.min(8, target)))
-    setIsFit(true)
-  }
-  useEffect(() => {
-    if (!loading && rows.length) {
-      const raf = requestAnimationFrame(fitZoom)
-      return () => cancelAnimationFrame(raf)
-    }
-    return undefined
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [range, loading])
-
-  const toggleHidden = (key: string) => {
-    setHidden((prev) => {
-      const next = new Set(prev)
-      if (next.has(key)) next.delete(key)
-      else next.add(key)
-      return next
-    })
-  }
-
-  return (
-    <>
-      <div className="ranges">
-        {ranges.map((item) => (
-          <button type="button" className={range === item.key ? 'active' : ''} onClick={() => setRange(item.key)} key={item.key}>
-            {item.label}
-          </button>
-        ))}
-        <span className="ranges-sep" />
-        <button
-          type="button"
-          className="zoom-btn"
-          aria-label="缩小横轴"
-          title={`缩小横轴（当前 ${Math.round(zoom * 100)}%）`}
-          onClick={() => {
-            setZoom((value) => Math.max(0.05, Math.round((value - 0.1) * 10) / 10))
-            setIsFit(false)
-          }}
-        >
-          <ZoomOut size={13} />
-        </button>
-        <button type="button" className={`zoom-btn${isFit ? ' active' : ''}`} aria-label="适应屏幕宽度" title="适应屏幕宽度" onClick={fitZoom}>
-          <MoveHorizontal size={13} />
-        </button>
-        <button
-          type="button"
-          className="zoom-btn"
-          aria-label="放大横轴"
-          title={`放大横轴（当前 ${Math.round(zoom * 100)}%）`}
-          onClick={() => {
-            setZoom((value) => Math.min(8, Math.round((value + 0.1) * 10) / 10))
-            setIsFit(false)
-          }}
-        >
-          <ZoomIn size={13} />
-        </button>
-      </div>
-      <div className={containerClass} ref={chartRef}>
-        {loading && <div className="loading-overlay">加载中…</div>}
-        {!loading && !rows.length && <div className="chart-empty">暂无负载历史（采集约 5 分钟后出数据）</div>}
-        <HorizontalChart width={Math.max(120, rows.length * 82 * zoom)}>
-          <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={rows} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-              <XAxis dataKey="time" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} interval="preserveStartEnd" minTickGap={28} />
-              <YAxis width={40} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} domain={[0, 'auto']} />
-              <Tooltip
-                contentStyle={{ fontSize: 11, borderRadius: 8 }}
-                formatter={(value, _name, item) => [
-                  Number(value).toFixed(2),
-                  LOAD_LINES.find((l) => l.key === item.dataKey)?.label || String(item.dataKey),
-                ]}
-                labelFormatter={(_value, payload) => formatAxisDateTime(Number((payload?.[0]?.payload as { ts?: number } | undefined)?.ts ?? 0), true)}
-              />
-              {LOAD_LINES.map((line) =>
-                hidden.has(line.key) ? null : (
-                  <Line
-                    key={line.key}
-                    type="monotone"
-                    dataKey={line.key}
-                    name={line.label}
-                    stroke={line.color}
-                    strokeWidth={line.key === 'l1' ? 2.5 : 1.5}
-                    dot={false}
-                    connectNulls={false}
-                    isAnimationActive={false}
-                  />
-                ),
-              )}
-            </LineChart>
-          </ResponsiveContainer>
-        </HorizontalChart>
-      </div>
-      <div className="legend">
-        {LOAD_LINES.map((line) => {
-          const off = hidden.has(line.key)
-          return (
-            <button type="button" className={off ? 'off' : ''} key={line.key} onClick={() => toggleHidden(line.key)} title={off ? '点击显示' : '点击隐藏'}>
-              <i style={{ background: line.color }} />
-              {line.label}
-            </button>
-          )
-        })}
-      </div>
-    </>
-  )
-}
-
 // 系统指标历史曲线（数据来自 /api/series?metric=system，beta3 上游原生支持）。metric='cpu' 单线 CPU%，'mem' 单线内存占用百分比
 const SYSTEM_LINES = {
   cpu: { label: 'CPU 使用率', color: 'var(--progress-cpu, #3b82f6)' },
   mem: { label: '内存使用率', color: 'var(--progress-memory, #8b5cf6)' },
 } as const
+// 趋势图曲线色: 黑金/白金下 --progress-* 已是渐变字符串(SVG stroke 不接受渐变, 曲线会失效),
+// 必须渲染时用纯色: 白金=主题金(CPU 中金/内存深金), 黑金=亮金
+function systemLineColor(metric: 'cpu' | 'mem'): string {
+  const root = document.documentElement
+  if (root.classList.contains('platinum')) return metric === 'cpu' ? '#c9962b' : '#a87c22'
+  if (root.classList.contains('gold')) return '#d8b46a'
+  return metric === 'cpu' ? 'var(--progress-cpu, #3b82f6)' : 'var(--progress-memory, #8b5cf6)'
+}
 export function SystemTrendChart({ serverIndex, metric, containerClass = 'detail-chart' }: { serverIndex: number; metric: 'cpu' | 'mem'; containerClass?: string }) {
   const [range, setRange] = useState<RangeKey>('1h')
   const [hidden, setHidden] = useState(false)
@@ -1353,7 +1222,7 @@ export function SystemTrendChart({ serverIndex, metric, containerClass = 'detail
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [range, loading])
 
-  const line = SYSTEM_LINES[metric]
+  const line = { ...SYSTEM_LINES[metric], color: systemLineColor(metric) }
   return (
     <>
       <div className="ranges">
@@ -1420,24 +1289,6 @@ export function SystemTrendChart({ serverIndex, metric, containerClass = 'detail
     </>
   )
 }
-
-function LoadTrendDialog({ serverName, title, close }: { serverName: string; title: string; close: () => void }) {
-  return createPortal(
-    <div className="modal-backdrop" role="presentation" onMouseDown={close}>
-      <section className="modal" onMouseDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-        <header>
-          <h2>{title} · 负载趋势</h2>
-          <button aria-label="关闭" onClick={close}>
-            ×
-          </button>
-        </header>
-        <LoadTrendChart serverName={serverName} containerClass="chart" />
-      </section>
-    </div>,
-    document.body,
-  )
-}
-
 function SystemTrendDialog({ serverIndex, title, metric, close }: { serverIndex: number; title: string; metric: 'cpu' | 'mem'; close: () => void }) {
   return createPortal(
     <div className="modal-backdrop" role="presentation" onMouseDown={close}>
@@ -1455,7 +1306,7 @@ function SystemTrendDialog({ serverIndex, title, metric, close }: { serverIndex:
   )
 }
 
-function PingPanel({ ping, serverIndex }: { ping: ProbePingSeries[]; serverIndex: number }) {
+export function PingPanel({ ping, serverIndex }: { ping: ProbePingSeries[]; serverIndex: number }) {
   const [mode, setMode] = useState<'latency' | 'loss' | null>(null)
   const [selected, setSelected] = useState('__avg__')
   const average = averagePing(ping)
@@ -1555,13 +1406,19 @@ export function ReturnRouteBadges({ routes, telecomPaidPeer, variant }: { routes
 }
 
 const LUMINA_QUOTA_SEGMENTS = 18
-// 每段取 OKLCH heat 渐变(绿→黄→橙→红)的 1/18 切片作为段色,与 LuminaPlus 的
+// 每段取 heat 渐变(绿→黄→橙→红)的 1/18 切片作为段色,与 LuminaPlus 的
 // trafficQuotaSegmentColor 语义一致:颜色只看段的位置,与主题无关。
+// 2026-08-13: 原 oklch 插值语法(linear-gradient to right in oklch) 在 Chrome<111 / Safari<16.2
+// 等浏览器整条失效导致进度条无渐变,改 hex 色标全兼容(色值经 oklch→sRGB 精确转换)。
 const LUMINA_HEAT_GRADIENT =
-  'linear-gradient(to right in oklch, oklch(0.72 0.16 150) 0%, oklch(0.72 0.16 150) 10%, oklch(0.8 0.18 128) 28%, oklch(0.86 0.18 110) 44%, oklch(0.8 0.18 85) 58%, oklch(0.72 0.19 62) 72%, oklch(0.65 0.21 40) 86%, oklch(0.6 0.22 27) 100%)'
+  'linear-gradient(to right, #4ac06c 0%, #4ac06c 10%, #9cd242 28%, #d9da26 44%, #f2b200 58%, #f58200 72%, #f25100 86%, #e62c2c 100%)'
 function luminaHeatGradient(): string {
   // 黑金配色: 金色渐变(与 --lumina-heat 覆盖一致)
   if (document.documentElement.classList.contains('gold')) {
+    return 'linear-gradient(to right, #a8843f 0%, #c9a255 30%, #d8b46a 60%, #f2d28b 100%)'
+  }
+  // 白金配色: 直接用黑金同款 4 色渐变(2026-08-15 用户要求 "直接用黑金那个")
+  if (document.documentElement.classList.contains('platinum')) {
     return 'linear-gradient(to right, #a8843f 0%, #c9a255 30%, #d8b46a 60%, #f2d28b 100%)'
   }
   return LUMINA_HEAT_GRADIENT
@@ -1615,7 +1472,16 @@ function luminaPulseColor(level: number): string {
     if (level < 0.3) return '#a8843f'
     if (level < 0.6) return '#c9a255'
     if (level < 0.85) return '#d8b46a'
-    return '#f2d28b'
+    // 最高柱: 压至比次高档略暗, 不再抢眼(原 #f2d28b → #e3c176 → #d3ac63)
+    return '#d3ac63'
+  }
+  // 白金配色: 直接用黑金延迟色(2026-08-15 用户要求, 主基调提亮)
+  if (document.documentElement.classList.contains('platinum')) {
+    if (level <= 0.01) return 'var(--progress-bg)'
+    if (level < 0.3) return '#a8843f'
+    if (level < 0.6) return '#c9a255'
+    if (level < 0.85) return '#d8b46a'
+    return '#d3ac63'
   }
   // 相对峰值分档: 无流量灰 → 低绿 → 中蓝 → 高琥珀 → 极高暖橙(琥珀+30%红, 避免刺眼红)
   if (level <= 0.01) return 'var(--progress-bg)'
@@ -1625,14 +1491,15 @@ function luminaPulseColor(level: number): string {
   return 'color-mix(in srgb, var(--status-warning) 70%, var(--status-error) 30%)'
 }
 
-function LuminaTrafficPulse({ samples }: { samples: ProbeServer['daily_traffic'] }) {
-  const dots = 16
-  const list = (samples || []).slice(-dots)
+function LuminaTrafficPulse({ samples, dots }: { samples: ProbeServer['daily_traffic']; dots?: number }) {
+  // 自适应: 数据有几天显示几根, 上限14天; 传 dots 则固定根数
+  const list = (samples || []).slice(-(dots ?? 14))
+  const count = dots ?? list.length
   const max = Math.max(1, ...list.map((item) => item.total ?? 0))
   return (
     <span className="lumina-traffic-pulse" aria-hidden>
-      {Array.from({ length: dots }, (_, index) => {
-        const sample = list[index - Math.max(0, dots - list.length)]
+      {Array.from({ length: count }, (_, index) => {
+        const sample = list[index - Math.max(0, count - list.length)]
         // 无数据的天(历史不足16天): 渲染空白格, 不画灰条(避免"没流量"假象)
         if (!sample) return <span key={index} className="lumina-pulse-empty" />
         const value = sample.total ?? 0
@@ -1644,7 +1511,7 @@ function LuminaTrafficPulse({ samples }: { samples: ProbeServer['daily_traffic']
             title={`${sample.date}\n上行 ${bytes(sample.uplink)}\n下行 ${bytes(sample.downlink)}`}
             style={
               {
-                '--pulse-h': `${Math.max(4, Math.round((0.45 + level * 0.95) * 20))}px`,
+                '--pulse-h': `${Math.max(8, Math.round((value / max) * 100))}%`,
                 '--pulse-color': luminaPulseColor(level),
                 opacity: value > 0 ? 0.55 + level * 0.45 : 0.35,
               } as React.CSSProperties
@@ -1659,6 +1526,18 @@ function LuminaTrafficPulse({ samples }: { samples: ProbeServer['daily_traffic']
 function luminaHeatColor(kind: 'latency' | 'loss', value: number): string {
   // 黑金配色: 延迟/丢包柱状条金色分档(低值暗金 → 高值亮金, 保留亮度层次)
   if (document.documentElement.classList.contains('gold')) {
+    if (value < 0) return 'var(--progress-bg)'
+    if (kind === 'latency') {
+      if (value < 100) return '#c9a255'
+      if (value < 200) return '#d8b46a'
+      return '#f2d28b'
+    }
+    if (value < 1) return '#c9a255'
+    if (value < 5) return '#d8b46a'
+    return '#f2d28b'
+  }
+  // 白金配色: 直接用黑金延迟柱色(2026-08-15 用户要求, 主基调提亮)
+  if (document.documentElement.classList.contains('platinum')) {
     if (value < 0) return 'var(--progress-bg)'
     if (kind === 'latency') {
       if (value < 100) return '#c9a255'
@@ -1712,8 +1591,8 @@ function LuminaHealthBars({ buckets, kind }: { buckets: ProbeBucket[]; kind: 'la
 
 function ServerCardLumina({ server, index }: { server: EnrichedServer; index: number }) {
   const isGold = document.documentElement.classList.contains('gold')
+  const isPlatinum = document.documentElement.classList.contains('platinum')
   const [trafficOpen, setTrafficOpen] = useState(false)
-  const [loadOpen, setLoadOpen] = useState(false)
   const [cpuOpen, setCpuOpen] = useState(false)
   const [memOpen, setMemOpen] = useState(false)
   const [healthTarget, setHealthTarget] = useState('__avg__')
@@ -1758,6 +1637,14 @@ function ServerCardLumina({ server, index }: { server: EnrichedServer; index: nu
     }
   }
   const expireValue = server.expires_at ? remainingDays(server.expires_at) : null
+  // 今日流量用量(本地时区当天; 当天无记录时回退 daily_traffic 最后一天)
+  const dailyRows = server.daily_traffic || []
+  const nowDate = new Date()
+  const todayStr = `${nowDate.getFullYear()}-${String(nowDate.getMonth() + 1).padStart(2, '0')}-${String(nowDate.getDate()).padStart(2, '0')}`
+  const todayRow = dailyRows.find((row) => row.date === todayStr) ?? dailyRows[dailyRows.length - 1]
+  const todayUp = todayRow ? (todayRow.uplink ?? 0) : null
+  const todayDown = todayRow ? (todayRow.downlink ?? 0) : null
+  const todayTotal = todayRow ? (todayRow.total ?? (todayUp ?? 0) + (todayDown ?? 0)) : null
   const renewText =
     server.renewal_price !== undefined
       ? server.renewal_price_cny !== undefined
@@ -1828,19 +1715,7 @@ function ServerCardLumina({ server, index }: { server: EnrichedServer; index: nu
             <LuminaMetricBar icon={<HardDrive size={13} />} label="磁盘" value={`${pct(server.disk_used, server.disk_total).toFixed(1)}%`} detail={`${bytes(server.disk_used)} / ${bytes(server.disk_total)}`} paint="var(--progress-disk)" fraction={pct(server.disk_used, server.disk_total) / 100} />
           )}
           {load1 !== undefined && (
-            <button
-              type="button"
-              className="lumina-metric-btn"
-              aria-label="查看负载趋势"
-              title="点击查看负载趋势"
-              onMouseDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation()
-                setLoadOpen(true)
-              }}
-            >
-              <LuminaMetricBar icon={<Gauge size={13} />} label="负载" value={load1.toFixed(2)} detail={`${loadParts[1]?.toFixed(2) ?? '—'} / ${loadParts[2]?.toFixed(2) ?? '—'}`} paint="var(--progress-load)" fraction={loadFraction} />
-            </button>
+            <LuminaMetricBar icon={<Gauge size={13} />} label="负载" value={load1.toFixed(2)} detail={`${loadParts[1]?.toFixed(2) ?? '—'} / ${loadParts[2]?.toFixed(2) ?? '—'}`} paint="var(--progress-load)" fraction={loadFraction} />
           )}
         </div>
 
@@ -1865,11 +1740,25 @@ function ServerCardLumina({ server, index }: { server: EnrichedServer; index: nu
               <small className="tabular">{cycleDown !== undefined ? `周期 ${bytes(cycleDown)}` : ''}</small>
             </div>
             <div className="lumina-traffic-pulse-wrap">
+              <div className="lumina-today-stat" title="今日流量用量(总/上行/下行)">
+                <span className="lumina-today-head">
+                  <span className="lumina-today-label">今日</span>
+                  <strong className="tabular lumina-today-total">{todayTotal !== null ? bytes(todayTotal) : '—'}</strong>
+                </span>
+                <span className="lumina-today-row" style={{ color: 'var(--traffic-up)' }}>
+                  <ArrowUp size={12} />
+                  <strong className="tabular">{todayUp !== null ? bytes(todayUp) : '—'}</strong>
+                </span>
+                <span className="lumina-today-row" style={{ color: 'var(--traffic-down)' }}>
+                  <ArrowDown size={12} />
+                  <strong className="tabular">{todayDown !== null ? bytes(todayDown) : '—'}</strong>
+                </span>
+              </div>
               <button
                 type="button"
-                className="lumina-pulse-btn"
+                className="lumina-pulse-btn lumina-week-btn"
                 aria-label="查看流量趋势"
-                title="点击查看流量趋势"
+                title="近 7-14 日流量 · 点击查看完整趋势"
                 onMouseDown={(event) => event.stopPropagation()}
                 onClick={(event) => {
                   event.stopPropagation()
@@ -1909,7 +1798,7 @@ function ServerCardLumina({ server, index }: { server: EnrichedServer; index: nu
                     style={
                       lit
                         ? {
-                            background: luminaHeatGradient(),
+                            backgroundImage: luminaHeatGradient(),
                             backgroundSize: `${LUMINA_QUOTA_SEGMENTS * 100}% 100%`,
                             backgroundPosition: `${(i / (LUMINA_QUOTA_SEGMENTS - 1)) * 100}% 0`,
                           }
@@ -1946,7 +1835,7 @@ function ServerCardLumina({ server, index }: { server: EnrichedServer; index: nu
                 </select>
                 <ChevronDown size={10} className="lumina-health-select-arrow" aria-hidden />
               </span>
-              <strong className="tabular" style={{ color: currentMs === null ? 'var(--text-tertiary)' : isGold ? '#f2d28b' : currentMs < 60 ? 'var(--status-success)' : currentMs < 120 ? 'var(--status-warning)' : 'var(--status-error)' }}>
+              <strong className="tabular" style={{ color: currentMs === null ? 'var(--text-tertiary)' : isGold ? '#f2d28b' : isPlatinum ? luminaHeatColor('latency', currentMs) : currentMs < 60 ? 'var(--status-success)' : currentMs < 120 ? 'var(--status-warning)' : 'var(--status-error)' }}>
                 {currentMs === null ? '—' : `${Math.round(currentMs)}`}
                 <small>ms</small>
               </strong>
@@ -1971,7 +1860,7 @@ function ServerCardLumina({ server, index }: { server: EnrichedServer; index: nu
                 <Unplug size={13} />
                 丢包率
               </span>
-              <strong className="tabular" style={{ color: lossAvg < 0 ? 'var(--text-tertiary)' : isGold ? '#f2d28b' : lossAvg < 1 ? 'var(--status-success)' : lossAvg < 5 ? 'var(--status-warning)' : 'var(--status-error)' }}>
+              <strong className="tabular" style={{ color: lossAvg < 0 ? 'var(--text-tertiary)' : isGold ? '#f2d28b' : isPlatinum ? luminaHeatColor('loss', lossAvg) : lossAvg < 1 ? 'var(--status-success)' : lossAvg < 5 ? 'var(--status-warning)' : 'var(--status-error)' }}>
                 {lossAvg < 0 ? '—' : lossAvg.toFixed(1)}
                 <small>%</small>
               </strong>
@@ -2026,7 +1915,6 @@ function ServerCardLumina({ server, index }: { server: EnrichedServer; index: nu
         />
       )}
       {trafficOpen && <TrafficDialog server={server} close={() => setTrafficOpen(false)} />}
-      {loadOpen && <LoadTrendDialog serverName={name} title={name} close={() => setLoadOpen(false)} />}
       {cpuOpen && <SystemTrendDialog serverIndex={index} title={name} metric="cpu" close={() => setCpuOpen(false)} />}
       {memOpen && <SystemTrendDialog serverIndex={index} title={name} metric="mem" close={() => setMemOpen(false)} />}
     </>
@@ -2498,7 +2386,9 @@ function ProbeLicenseNameplate({ name, displayName }: { name?: string; displayNa
     const shine = shineRef.current
     if (!plate || !text || !stars || !shine) return
 
-    const palette = ['#f2d28b', '#d8b46a', '#e0b96e', '#f5c542', '#f3ecdc']
+    const palette = document.documentElement.classList.contains('platinum')
+      ? ['#8c5d17', '#d7a63d', '#f2d78a', '#fff1b9', '#c78e24']
+      : ['#f2d28b', '#d8b46a', '#e0b96e', '#f5c542', '#f3ecdc']
     const random = (min: number, max: number) => min + Math.random() * (max - min)
     const clamp = (value: number, min: number, max: number) => Math.max(min, Math.min(max, value))
     const easeOutBack = (value: number) => {
@@ -2534,7 +2424,7 @@ function ProbeLicenseNameplate({ name, displayName }: { name?: string; displayNa
     let frameID = 0
     const start = performance.now()
     const frame = (now: number) => {
-      const progress = ((now - start) % 5500) / 5500
+      const progress = ((now - start) % 5596) / 5596
       const reveal = clamp(progress / 0.36, 0, 1)
       let rotateX = 0
       let scale = 1
@@ -2590,71 +2480,9 @@ function ProbeLicenseNameplate({ name, displayName }: { name?: string; displayNa
 // 注意：此数组为本地部署专属（私有勋章），推送到 GitHub 时由 git clean filter 自动剥离。
 import { EXTRA_LICENSE_BADGES } from './license-badges'
 
-// daily_traffic 跨周期历史: Worker cron 按天合并缓存(KV, 90天), 前端页面加载拉一次(日期变化时刷新),
-// 与 payload 的 daily_traffic(当前周期)合并 → 周期重置后脉冲图/日流量趋势仍有历史
-type DailyHistory = Record<string, Record<string, [number, number, number]>>
-function useDailyHistory(): DailyHistory | null {
-  const [history, setHistory] = useState<DailyHistory | null>(null)
-  useEffect(() => {
-    let stopped = false
-    let day = new Date().toISOString().slice(0, 10)
-    const load = async () => {
-      try {
-        const resp = await fetch('/api/daily-history', { cache: 'no-store' })
-        if (!resp.ok) return
-        const payload = (await resp.json()) as { success?: boolean; history?: DailyHistory }
-        if (stopped) return
-        const h = payload.history
-        if (h && Object.keys(h).length) setHistory(h)
-      } catch {
-        // 历史不可用不影响主流程
-      }
-    }
-    void load()
-    const timer = window.setInterval(() => {
-      const today = new Date().toISOString().slice(0, 10)
-      if (today !== day) {
-        day = today
-        void load()
-      }
-    }, 60_000)
-    return () => {
-      stopped = true
-      window.clearInterval(timer)
-    }
-  }, [])
-  return history
-}
-
-// 合并: 历史(按服务器名) 为底, payload 当天数据覆盖(最新值), 按日期排序。
-// 附加 cycle_daily_traffic = payload 原始周期内数据(周期拆分比例用, 避免被 90 天历史污染)
-type DailyRow = NonNullable<ProbeServer['daily_traffic']>[number]
-type EnrichedServer = ProbeServer & { cycle_daily_traffic?: DailyRow[] }
-function mergeDailyTraffic(servers: ProbeServer[], history: DailyHistory | null): EnrichedServer[] {
-  if (!history || !Object.keys(history).length) return servers
-  return servers.map((server) => {
-    const name = server.name?.trim()
-    if (!name) return server
-    const byDate = new Map<string, { uplink: number; downlink: number; total: number }>()
-    for (const [date, recs] of Object.entries(history)) {
-      const rec = recs?.[name]
-      if (rec) byDate.set(date, { uplink: rec[0], downlink: rec[1], total: rec[2] })
-    }
-    for (const row of server.daily_traffic || []) {
-      if (row?.date) byDate.set(row.date, { uplink: row.uplink ?? 0, downlink: row.downlink ?? 0, total: row.total ?? 0 })
-    }
-    if (!byDate.size) return server
-    const merged = [...byDate.entries()]
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([date, rec]) => ({ date, uplink: rec.uplink, downlink: rec.downlink, total: rec.total }))
-    return { ...server, daily_traffic: merged, cycle_daily_traffic: server.daily_traffic || [] }
-  })
-}
-
 export function App() {
   const { data, error } = useProbe()
-  const dailyHistory = useDailyHistory()
-  const servers = useMemo(() => mergeDailyTraffic(data?.servers || [], dailyHistory), [data, dailyHistory])
+  const servers = data?.servers || []
   const [view, setView] = useState<'card' | 'list' | 'mini'>(() => (localStorage.getItem('probe-view') as 'card' | 'list' | 'mini') || 'card')
   const [miniExpanded, setMiniExpanded] = useState<boolean>(() => localStorage.getItem('probe-mini-expanded') === '1')
   const [filter, setFilter] = useState<'all' | 'online' | 'offline' | 'expiring' | 'expired' | 'renewal'>('all')
@@ -2697,8 +2525,9 @@ export function App() {
       const match = /^#\/server\/(\d+)$/.exec(window.location.hash)
       const next = match ? Number(match[1]) : null
       if (next !== null) {
-        // 打开详情页：记录主页面滚动位置，供关闭时恢复
+        // 打开详情页：记录主页面滚动位置，供关闭时恢复；详情页从顶部展示(#175 点击榜单项后停留榜单位置看不到详情)
         detailScrollRef.current = window.scrollY
+        window.scrollTo(0, 0)
       } else {
         // 关闭详情页：恢复到最后浏览的位置
         window.scrollTo(0, detailScrollRef.current)
@@ -2714,11 +2543,12 @@ export function App() {
     window.scrollTo(0, detailScrollRef.current)
   }, [])
   const isDark = darkMode === 'dark' || (darkMode === null && document.documentElement.classList.contains('dark'))
-  // 主控下发 Lumina-Gold 时 darkMode state 为 null，但页面已挂 gold——用 classList 兜底识别，否则三态循环从错误位置起步
+  // 主控下发 Lumina-Gold / Lumina-Platinum 时 darkMode state 为 null，但页面已挂 gold/platinum——用 classList 兜底识别，否则循环从错误位置起步
   const isGold = darkMode === 'gold' || (darkMode === null && document.documentElement.classList.contains('gold'))
+  const isPlatinum = darkMode === 'platinum' || (darkMode === null && document.documentElement.classList.contains('platinum'))
   const toggleDark = () => {
-    // 三态循环: 浅色 → 暗色 → 黑金(lumina 专属) → 浅色
-    const next = isGold ? 'light' : isDark ? 'gold' : 'dark'
+    // 四态循环: 浅色 → 暗色 → 黑金 → 白金 → 浅色
+    const next = isPlatinum ? 'light' : isGold ? 'platinum' : isDark ? 'gold' : 'dark'
     setDarkOverride(next)
     setDarkMode(next)
   }
@@ -2754,6 +2584,14 @@ export function App() {
     return (
       <Suspense fallback={<main className="center">正在加载 Premium 主题…</main>}>
         <PremiumProbePage data={data} isLoading={false} isError={false} onThemeChange={(name) => { setTheme(name); setThemeState(name); setActiveTheme(name ?? getActiveTheme()) }} />
+      </Suspense>
+    )
+  }
+  // glassmorphism 主题: 整页 Glassmorphism 界面（复刻 Komari Glassmorphism 主题）
+  if (activeTheme === 'glassmorphism') {
+    return (
+      <Suspense fallback={<main className="center">正在加载 Glassmorphism 主题…</main>}>
+        <GmApp data={data} onThemeChange={(name) => { setTheme(name); setThemeState(name); setActiveTheme(name ?? getActiveTheme()) }} />
       </Suspense>
     )
   }
@@ -2795,8 +2633,8 @@ export function App() {
           <button aria-label="列表视图" title="列表视图" className={view === 'list' ? 'active' : ''} onClick={() => setMode('list')}>
             <List size={18} />
           </button>
-          <button aria-label="切换配色" title={isGold ? '切换浅色模式' : isDark ? '切换黑金配色' : '切换暗色模式'} onClick={toggleDark}>
-            {isGold ? <Gem size={18} /> : isDark ? <Sun size={18} /> : <Moon size={18} />}
+          <button aria-label="切换配色" title={isPlatinum ? '切换浅色模式' : isGold ? '切换白金配色' : isDark ? '切换黑金配色' : '切换暗色模式'} onClick={toggleDark}>
+            {isPlatinum ? <Crown size={18} /> : isGold ? <Gem size={18} /> : isDark ? <Sun size={18} /> : <Moon size={18} />}
           </button>
           <ThemeSelect value={theme} onChange={(name) => { setTheme(name); setThemeState(name); setActiveTheme(name ?? getActiveTheme()) }} />
         </nav>

@@ -1,4 +1,4 @@
-export type ThemeName = 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium'
+export type ThemeName = 'pixel' | 'flat' | 'anime' | 'glass' | 'lumina' | 'premium' | 'ran' | 'glassmorphism'
 
 export interface ProbeAppearance {
   // theme 是主控下发名，可为任意自定义主题名（探针挂 theme-{name} 类，无对应 CSS 时回退默认）
@@ -35,6 +35,12 @@ export interface ProbeServer {
   traffic_used_up?: number
   traffic_used_down?: number
   traffic_used_total?: number
+  traffic_adjustment?: number
+  traffic_source?: string
+  traffic_stats_mode?: string
+  boot_traffic_up?: number
+  boot_traffic_down?: number
+  boot_traffic_scope?: string
   period_start?: string
   period_end?: string
   cumulative_up?: number

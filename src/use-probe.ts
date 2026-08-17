@@ -1,26 +1,110 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ProbeAppearance, ProbePayload, ThemeName } from './types'
+import type { ProbeAppearance, ProbePayload, ProbeServer, ThemeName } from './types'
 
 const APPEARANCE_CACHE = 'mmwx-probe-appearance'
 const DARK_OVERRIDE = 'mmwx-probe-dark-override'
 const THEME_OVERRIDE = 'mmwx-probe-theme-override'
+
+// ===== 日流量跨周期历史(浏览器本地缓存, 保留 90 天) =====
+// 主控 daily_traffic 只含当前重置周期, 重置即清零 → 前端把每次 payload 合并进
+// localStorage, 过重置日后流量趋势图仍保留历史(换设备/清缓存会丢, 零服务端依赖)。
+const LOCAL_HIST_KEY = 'probe-daily-traffic-v1'
+const LOCAL_HIST_DAYS = 90
+
+type DailyHistory = Record<string, Record<string, [number, number, number]>>
+type DailyRow = NonNullable<ProbeServer['daily_traffic']>[number]
+export type EnrichedServer = ProbeServer & { cycle_daily_traffic?: DailyRow[] }
+
+function loadLocalHistory(): DailyHistory | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_HIST_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as DailyHistory
+    return parsed && typeof parsed === 'object' ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function persistLocalHistory(history: DailyHistory): void {
+  const cutoff = new Date(Date.now() - LOCAL_HIST_DAYS * 86400 * 1000).toISOString().slice(0, 10)
+  for (const name of Object.keys(history)) {
+    for (const date of Object.keys(history[name])) {
+      if (date < cutoff) delete history[name][date]
+    }
+    if (!Object.keys(history[name]).length) delete history[name]
+  }
+  try {
+    localStorage.setItem(LOCAL_HIST_KEY, JSON.stringify(history))
+  } catch {
+    // 存储满/隐私模式忽略
+  }
+}
+
+// 合并: 历史(按服务器名) 为底, payload 当天数据覆盖(最新值), 按日期排序。
+// 附加 cycle_daily_traffic = payload 原始周期内数据(周期拆分比例用, 避免被 90 天历史污染)
+function mergeDailyTraffic(servers: ProbeServer[], history: DailyHistory | null): EnrichedServer[] {
+  if (!history || !Object.keys(history).length) return servers
+  return servers.map((server) => {
+    const name = server.name?.trim()
+    if (!name) return server
+    const byDate = new Map<string, { uplink: number; downlink: number; total: number }>()
+    for (const [date, recs] of Object.entries(history)) {
+      const rec = recs?.[name]
+      if (rec) byDate.set(date, { uplink: rec[0], downlink: rec[1], total: rec[2] })
+    }
+    for (const row of server.daily_traffic || []) {
+      if (row?.date) byDate.set(row.date, { uplink: row.uplink ?? 0, downlink: row.downlink ?? 0, total: row.total ?? 0 })
+    }
+    if (!byDate.size) return server
+    const merged = [...byDate.entries()]
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([date, rec]) => ({ date, uplink: rec.uplink, downlink: rec.downlink, total: rec.total }))
+    return { ...server, daily_traffic: merged, cycle_daily_traffic: server.daily_traffic || [] }
+  })
+}
+
+// payload 到达时: 合并本地跨周期历史并写回
+function enrichPayload(payload: ProbePayload): ProbePayload {
+  if (!payload?.servers?.length) return payload
+  const prev = loadLocalHistory()
+  const next: DailyHistory = prev && typeof prev === 'object' ? JSON.parse(JSON.stringify(prev)) : {}
+  for (const server of payload.servers) {
+    const name = server.name?.trim()
+    if (!name || !Array.isArray(server.daily_traffic)) continue
+    next[name] = next[name] ?? {}
+    for (const row of server.daily_traffic) {
+      if (!row?.date) continue
+      next[name][row.date] = [row.uplink ?? 0, row.downlink ?? 0, row.total ?? (row.uplink ?? 0) + (row.downlink ?? 0)]
+    }
+  }
+  persistLocalHistory(next)
+  return { ...payload, servers: mergeDailyTraffic(payload.servers, next) }
+}
 
 function normalizeTheme(value?: string): ThemeName {
   return value === 'anime' || value === 'flat' || value === 'glass' || value === 'lumina' ? value : 'pixel'
 }
 
 // 主控下发组合名 "Lumina-Gold" / "Lumina Gold" / "LUMINAGOLD" → lumina 主题 + 黑金配色
-export function parseThemeName(raw: string): { theme: string; gold: boolean } {
+// "Lumina-Platinum" → lumina + 白金配色(浅底暗金, license.miaomiaowu.net premium light 移植)
+// "Premium-Platinum"/"Premium Light" → premium 整页主题 + 白金配色
+// "Glassmorphism Light/Dark" → glassmorphism 主题 + 白天/夜间模式
+export function parseThemeName(raw: string): { theme: string; gold: boolean; platinum: boolean; light?: boolean } {
   const lower = raw.toLowerCase().replace(/[\s_-]/g, '')
-  if (lower === 'luminagold') return { theme: 'lumina', gold: true }
-  return { theme: isBuiltinTheme(raw.toLowerCase()) ? raw.toLowerCase() : raw, gold: false }
+  if (lower === 'luminagold') return { theme: 'lumina', gold: true, platinum: false }
+  if (lower === 'luminaplatinum') return { theme: 'lumina', gold: false, platinum: true }
+  if (lower === 'premiumplatinum' || lower === 'premiumlight') return { theme: 'premium', gold: false, platinum: true }
+  if (lower === 'glassmorphismlight') return { theme: 'glassmorphism', gold: false, platinum: false, light: true }
+  if (lower === 'glassmorphismdark') return { theme: 'glassmorphism', gold: false, platinum: false, light: false }
+  return { theme: isBuiltinTheme(raw.toLowerCase()) ? raw.toLowerCase() : raw, gold: false, platinum: false }
 }
 
 // 主控可能下发自定义主题名（theme-{name} 类）。内置 6 主题走主题系统（含 premium 整页主题）；
 // 未知主题名照常挂 theme-{name} 类——站长可在自己的 CSS 里写 .theme-{name} 覆盖，
 // 没写则回退到默认(pixel)样式。返回值 = 是否内置主题（供 UI 判断"跟随主控"时如何显示）。
 export function isBuiltinTheme(value?: string): boolean {
-  return value === 'pixel' || value === 'flat' || value === 'anime' || value === 'glass' || value === 'lumina' || value === 'premium' || value === 'luminagold'
+  return value === 'pixel' || value === 'flat' || value === 'anime' || value === 'glass' || value === 'lumina' || value === 'premium' || value === 'luminagold' || value === 'luminaplatinum' || value === 'premiumplatinum' || value === 'premiumlight' || value === 'ran' || value === 'glassmorphism'
 }
 
 export function applyAppearance(input?: ProbeAppearance) {
@@ -45,16 +129,58 @@ export function applyAppearance(input?: ProbeAppearance) {
   for (const cls of [...root.classList]) {
     if (cls.startsWith('theme-')) root.classList.remove(cls)
   }
+  // Ran 主题把 data-theme 挂在 body 上作为自身配色 tokens 的载体,
+  // 这里只在切到非 Ran 主题时才清(ran 组件卸载后残留会污染其他主题文字色);
+  // Ran 系主题必须保留, 否则轮询每帧清掉 data-theme 会导致 Ran 页面全白。
+  if (!/^ran(-|$)/i.test(theme)) {
+    document.body.removeAttribute('data-theme')
+  }
   root.classList.remove('dark')
   root.classList.remove('gold')
+  root.classList.remove('platinum')
   root.classList.add(`theme-${theme}`)
   const darkOverride = localStorage.getItem(DARK_OVERRIDE)
   let dark: boolean
-  if (darkOverride === 'gold' || (parsed.gold && !themeOverride && !darkOverride)) {
+  // premium 配色三态(auto/白金/黑金, 由 PremiumProbePage 控制 localStorage premium-probe-color-mode):
+  // applyAppearance 在 WS/轮询每帧(5s)都会跑, 必须尊重三态, 否则 remove('platinum') 会冲掉
+  // auto/手动白金类造成白金黑金横跳(2026-08-17 用户实测)
+  if (theme === 'premium') {
+    const premiumMode = localStorage.getItem('premium-probe-color-mode')
+    if (premiumMode === 'platinum') {
+      root.classList.add('platinum')
+      dark = false
+    } else if (premiumMode === 'auto') {
+      const now = new Date()
+      const hour = (now.getUTCHours() + 8) % 24 // 北京时间(UTC+8)
+      root.classList.toggle('platinum', hour >= 6 && hour < 18)
+      dark = false
+    } else if (premiumMode === 'dark') {
+      dark = false // premium 基础样式即黑金, 不挂 dark 类
+    } else if (darkOverride === 'platinum' || (parsed.platinum && !themeOverride && !darkOverride)) {
+      // 未设置三态时沿用旧逻辑: 手动 darkOverride 或主控下发 premiumplatinum → 白金
+      root.classList.add('platinum')
+      dark = false
+    } else if (darkOverride === 'gold') {
+      root.classList.add('gold')
+      dark = false
+    } else if (darkOverride === 'dark') {
+      dark = true
+    } else if (darkOverride === 'light') {
+      dark = false
+    } else {
+      dark = appearance.color_mode === 'dark' ||
+        (appearance.color_mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
+    }
+  } else if (darkOverride === 'gold' || (parsed.gold && !themeOverride && !darkOverride)) {
     // 黑金配色（lumina 第三配色）: 不挂 dark, 挂 gold。
     // 手动 override 为 gold，或主控下发组合名且用户从未手动干预（主题/配色都没选过）才进入。
     // 用户一旦手动切过配色（darkOverride 任意值），主控的 gold 不再强制，尊重用户选择。
     root.classList.add('gold')
+    dark = false
+  } else if (darkOverride === 'platinum' || (parsed.platinum && !themeOverride && !darkOverride)) {
+    // 白金配色（lumina 第四配色 / premium 第二配色, license.miaomiaowu.net premium light 移植）:
+    // 浅底暗金。机制与 gold 一致。
+    root.classList.add('platinum')
     dark = false
   } else if (darkOverride === 'dark') {
     dark = true
@@ -65,6 +191,10 @@ export function applyAppearance(input?: ProbeAppearance) {
       (appearance.color_mode === 'system' && matchMedia('(prefers-color-scheme: dark)').matches)
   }
   if (dark) root.classList.add('dark')
+  // Glassmorphism 明暗下发: 写 master 缓存, GmApp 初始化时读取(用户手动切换优先)
+  if (parsed.light !== undefined) {
+    localStorage.setItem('gm-color-mode-master', parsed.light ? 'light' : 'dark')
+  }
   root.dataset.themeReady = 'true'
   if (input) localStorage.setItem(APPEARANCE_CACHE, JSON.stringify(input))
 }
@@ -73,7 +203,7 @@ export function getDarkOverride(): string | null {
   return localStorage.getItem(DARK_OVERRIDE)
 }
 
-export function setDarkOverride(mode: 'dark' | 'light' | 'gold' | null) {
+export function setDarkOverride(mode: 'dark' | 'light' | 'gold' | 'platinum' | null) {
   if (mode) {
     localStorage.setItem(DARK_OVERRIDE, mode)
   } else {
@@ -142,7 +272,7 @@ export function useProbe(): { data?: ProbePayload; error?: string } {
     const accept = (payload: ProbePayload) => {
       if (stopped) return
       applyAppearance(payload.appearance)
-      setData(payload)
+      setData(enrichPayload(payload))
       setError(undefined)
       if (payload.title) document.title = payload.title
     }
