@@ -2,26 +2,30 @@ name: Sync upstream
 
 on:
   schedule:
-    # 每天北京时间 11:23 检查更新，避开整点的 Actions 高峰。
+    # Daily at 03:23 UTC (11:23 Asia/Shanghai).
     - cron: '23 3 * * *'
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/sync-upstream.yml'
 
 permissions:
   contents: write
 
 concurrency:
-  group: sync-upstream-${{ github.ref }}
+  group: sync-upstream-main
   cancel-in-progress: false
 
 jobs:
   sync:
-    # 官方仓库自身不跑；fork 仓库跑。upstream 指向定制源(chnnic/jiwo-probe)。
-    if: github.repository != 'chnnic/jiwo-probe'
+    if: github.repository == 'liugaoxiao/jiwo-probe'
     runs-on: ubuntu-latest
     steps:
-      - name: Check out user repository
+      - name: Check out fork
         uses: actions/checkout@v4
         with:
+          ref: main
           fetch-depth: 0
 
       - name: Merge upstream updates
@@ -29,15 +33,16 @@ jobs:
           UPSTREAM_REPOSITORY: chnnic/jiwo-probe
           UPSTREAM_BRANCH: main
         run: |
+          set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git remote add upstream "https://github.com/${UPSTREAM_REPOSITORY}.git"
           git fetch --no-tags upstream "${UPSTREAM_BRANCH}"
 
-          if git diff --quiet HEAD "upstream/${UPSTREAM_BRANCH}"; then
+          if git merge-base --is-ancestor "upstream/${UPSTREAM_BRANCH}" HEAD; then
             echo "Already up to date."
             exit 0
           fi
 
           git merge --no-edit "upstream/${UPSTREAM_BRANCH}"
-          git push origin "HEAD:${GITHUB_REF_NAME}"
+          git push origin HEAD:main
