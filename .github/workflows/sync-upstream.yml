@@ -59,4 +59,17 @@ jobs:
             git commit --no-edit
           fi
 
-          git push origin HEAD:main
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Validate synchronized code
+        run: |
+          npm ci
+          npm run typecheck
+          npm run build
+
+      - name: Push validated updates
+        run: git push origin HEAD:main
