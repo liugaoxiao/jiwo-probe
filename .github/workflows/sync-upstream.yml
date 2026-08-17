@@ -5,10 +5,6 @@ on:
     # Daily at 03:23 UTC (11:23 Asia/Shanghai).
     - cron: '23 3 * * *'
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - '.github/workflows/sync-upstream.yml'
 
 permissions:
   contents: write
@@ -44,5 +40,23 @@ jobs:
             exit 0
           fi
 
-          git merge --no-edit "upstream/${UPSTREAM_BRANCH}"
+          if ! git merge --no-edit "upstream/${UPSTREAM_BRANCH}"; then
+            # These files contain fork-specific automation and Cloudflare bindings.
+            for file in .github/workflows/sync-upstream.yml wrangler.jsonc; do
+              if git ls-files -u -- "$file" | grep -q .; then
+                git checkout --ours -- "$file"
+                git add "$file"
+              fi
+            done
+
+            remaining="$(git diff --name-only --diff-filter=U)"
+            if [ -n "$remaining" ]; then
+              echo "Unresolved upstream conflicts:"
+              echo "$remaining"
+              exit 1
+            fi
+
+            git commit --no-edit
+          fi
+
           git push origin HEAD:main
